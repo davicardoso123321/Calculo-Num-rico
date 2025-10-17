@@ -1,0 +1,118 @@
+import numpy as np
+
+# Importando as funções de cálculo numérico do módulo 'algoritmos'
+from algoritmos import encontrar_raiz_bissecao
+from algoritmos import metodo_gauss_seidel
+from algoritmos import (
+    iteracao_newton, 
+    iteracao_newton_numerica, 
+    metodo_ponto_fixo
+)
+
+
+def equacao_balanco_termico(temperatura_superficie):
+    """
+    Modelo matemático para o balanço de energia térmica em uma superfície,
+    considerando radiação e convecção.
+    """
+    temp_ambiente_kelvin = 272.975  # Temperatura de referência do ambiente em Kelvin.
+    irradiacao_incidente_watts = 500.125  # Potência de irradiação solar por m^2.
+    
+    # Equação combinando a Lei de Stefan-Boltzmann e a Lei do Resfriamento de Newton.
+    return 5.67e-8 * (temperatura_superficie**4) + 0.4 * (temperatura_superficie - temp_ambiente_kelvin) - irradiacao_incidente_watts
+
+def executar_tarefas():
+    """
+    Função principal que executa e exibe os resultados das diferentes atividades
+    de cálculo numérico.
+    """
+    # --- Início do Primeiro Bloco de Exercícios ---
+    print("\n" + "="*15 + " Bloco de Exercícios 1 " + "="*15)
+
+    # Resolução de equação não-linear (Balanço Térmico)
+    print("\n--- Tarefa 1: Equilíbrio Térmico ---")
+    raiz_temp, num_passos = encontrar_raiz_bissecao(equacao_balanco_termico, 300, 305, 1e-5)
+    print(f"Temperatura de equilíbrio encontrada: {raiz_temp:.5f} K")
+    print(f"Número de iterações (Bisseção): {num_passos}")
+
+    # --- Fim do Primeiro Bloco ---
+
+    # --- Início do Segundo Bloco de Exercícios ---
+    print("\n" + "="*15 + " Bloco de Exercícios 2 " + "="*15)
+    
+    # Resolução de sistema linear 3x3
+    print("\n--- Tarefa 2: Sistema Linear Genérico ---")
+    matriz_sistema_A = np.array([[17, -2, -3], [-5, 21, -2], [-5, -5, 22]], dtype=float)
+    vetor_termos_B = np.array([500, 200, 300], dtype=float)
+    
+    print("\nMatriz de Coeficientes (A):")
+    print(matriz_sistema_A)
+    print("\nVetor de Termos Independentes (B):")
+    print(vetor_termos_B)
+    
+    solucao_vetorial_1 = metodo_gauss_seidel(matriz_sistema_A, vetor_termos_B, 100, 1e-8)
+    print("\nVetor solução (via Gauss-Seidel):")
+    print(solucao_vetorial_1)
+    
+    # --- Fim do Segundo Bloco ---
+
+    # --- Início do Terceiro Bloco de Exercícios ---
+    print("\n" + "="*15 + " Bloco de Exercícios 3 " + "="*15)
+
+    # Análise de Circuito Elétrico
+    print("\n--- Tarefa 3: Análise de Malhas em Circuito ---")
+    matriz_malhas_circuito = np.array([[20, 10], [10, 20]], dtype=float)
+    vetor_tensoes_fonte = np.array([100, 100], dtype=float)
+
+    print("\nMatriz de Resistências (A):")
+    print(matriz_malhas_circuito)
+    print("\nVetor de Tensões (B):")
+    print(vetor_tensoes_fonte)
+
+    correntes_de_malha = metodo_gauss_seidel(matriz_malhas_circuito, vetor_tensoes_fonte, 100, 1e-8)
+    print("\nCorrentes de malha I1 e I2 (solução):")
+    print(correntes_de_malha)
+
+    print("\nCálculo da corrente no resistor central (R3):")
+    corrente_resistor_r3 = np.sum(correntes_de_malha)
+    print(f"I_R3 = {corrente_resistor_r3:.4f} A")
+
+    # --- Fim do Terceiro Bloco ---
+    
+    # --- Início do Quarto Bloco de Exercícios ---
+    print("\n" + "="*15 + " Bloco de Exercícios 4 " + "="*15)
+    
+    # Resolução de sistema não-linear com Método de Newton
+    print("\n--- Tarefa 4: Sistema de Equações Não-Lineares ---")
+    
+    def sistema_nao_linear_F(vars_vetor):
+        v1, v2 = vars_vetor
+        eq1 = (v1**4 + 0.06823 * v1) - (v2**4 + 0.05848 * v2) - 0.01753
+        eq2 = (v1**4 + 0.05848 * v1) - (2 * v2**4 + 0.11696 * v2) - 0.00254
+        return np.array([eq1, eq2], dtype=float)
+
+    def jacobiana_analitica_J(vars_vetor):
+        v1, v2 = vars_vetor
+        return np.array([
+            [4 * v1**3 + 0.06823, -4 * v2**3 - 0.05848],
+            [4 * v1**3 + 0.05848, -8 * v2**3 - 0.11696]
+        ], dtype=float)
+
+    chute_inicial = np.array([0.5, 0.5], dtype=float)
+    
+    # Resolvendo com Jacobiana analítica
+    resultado_analitico = metodo_ponto_fixo(chute_inicial, lambda v: iteracao_newton(v, sistema_nao_linear_F, jacobiana_analitica_J))
+    print("\nSolução com Jacobiana Analítica:")
+    print(resultado_analitico)
+
+    # Resolvendo com Jacobiana numérica
+    resultado_numerico = metodo_ponto_fixo(chute_inicial, lambda v: iteracao_newton_numerica(v, sistema_nao_linear_F))
+    print("\nSolução com Jacobiana Numérica:")
+    print(resultado_numerico)
+
+    # --- Fim do Quarto Bloco ---
+
+
+# Ponto de entrada do script: executa a função principal.
+if __name__ == "__main__":
+    executar_tarefas()
