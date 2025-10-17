@@ -1,0 +1,223 @@
+import numpy as np
+from scipy.optimize import approx_fprime
+
+def encontrar_raiz_bissecao(
+    funcao_alvo,      # A função matemática cuja raiz será calculada.
+    limite_inferior,  # Ponto inicial do intervalo de busca.
+    limite_superior,  # Ponto final do intervalo de busca.
+    precisao,         # A tolerância para o critério de parada.
+    max_iteracoes=16  # Limite de iterações para evitar loops infinitos.
+):
+    """
+    Encontra a raiz de uma função em um dado intervalo usando o método da bisseção.
+    """
+    ponto_teste = (limite_inferior + limite_superior) / 2.0  # Calcula o ponto médio inicial.
+
+    # Verifica se o Teorema de Bolzano é satisfeito.
+    if funcao_alvo(limite_inferior) * funcao_alvo(limite_superior) > 0:
+        raise ValueError("A função não muda de sinal no intervalo fornecido.")
+    
+    contador_passos = 0  # Inicializa o contador de iterações.
+    diferenca_atual = abs(funcao_alvo(limite_superior) - funcao_alvo(limite_inferior))
+
+    # Itera até que a precisão seja atingida ou o limite de iterações seja alcançado.
+    while diferenca_atual > precisao and contador_passos < max_iteracoes:
+        ponto_teste = (limite_inferior + limite_superior) / 2.0
+
+        # Se o ponto médio for a raiz, retorna o valor.
+        if funcao_alvo(ponto_teste) == 0:
+            return ponto_teste, contador_passos
+
+        # Redefine o intervalo de busca.
+        elif funcao_alvo(limite_inferior) * funcao_alvo(ponto_teste) < 0:
+            limite_superior = ponto_teste
+        else:
+            limite_inferior = ponto_teste
+        
+        contador_passos += 1
+        diferenca_atual = abs(funcao_alvo(limite_superior) - funcao_alvo(limite_inferior))
+
+    return ponto_teste, contador_passos
+
+
+def decomposicao_lu_pivot(matriz_entrada: np.ndarray):
+    """
+    Executa a decomposição LU com pivoteamento parcial.
+    """
+    matriz_copia = matriz_entrada.astype(float).copy()
+    ordem = matriz_copia.shape[0]
+    matriz_permutacao = np.eye(ordem)
+    matriz_inferior = np.zeros((ordem, ordem))
+    matriz_superior = matriz_copia.copy()
+
+    for passo_atual in range(ordem):
+        # Encontra o pivô para a coluna atual.
+        indice_pivo = np.argmax(np.abs(matriz_superior[passo_atual:, passo_atual])) + passo_atual
+        
+        # Verifica se a matriz é singular.
+        if np.isclose(matriz_superior[indice_pivo, passo_atual], 0.0):
+            raise np.linalg.LinAlgError("Matriz singular detectada.")
+
+        # Realiza a troca de linhas (pivoteamento).
+        if indice_pivo != passo_atual:
+            matriz_superior[[passo_atual, indice_pivo], passo_atual:] = matriz_superior[[indice_pivo, passo_atual], passo_atual:]
+            matriz_permutacao[[passo_atual, indice_pivo], :] = matriz_permutacao[[indice_pivo, passo_atual], :]
+            if passo_atual > 0:
+                matriz_inferior[[passo_atual, indice_pivo], :passo_atual] = matriz_inferior[[indice_pivo, passo_atual], :passo_atual]
+
+        # Calcula os multiplicadores e atualiza a matriz U.
+        for linha_atual in range(passo_atual + 1, ordem):
+            matriz_inferior[linha_atual, passo_atual] = matriz_superior[linha_atual, passo_atual] / matriz_superior[passo_atual, passo_atual]
+            matriz_superior[linha_atual, passo_atual:] -= matriz_inferior[linha_atual, passo_atual] * matriz_superior[passo_atual, passo_atual:]
+
+    # Preenche a diagonal da matriz L com 1s.
+    np.fill_diagonal(matriz_inferior, 1.0)
+    return matriz_permutacao, matriz_inferior, matriz_superior
+
+
+def substituicao_sucessiva(matriz_L: np.ndarray, vetor_B: np.ndarray) -> np.ndarray:
+    """
+    Resolve o sistema linear Ly = B (substituição direta).
+    """
+    dimensao = matriz_L.shape[0]
+    vetor_Y = np.zeros(dimensao)
+    for indice_linha in range(dimensao):
+        vetor_Y[indice_linha] = vetor_B[indice_linha] - np.dot(matriz_L[indice_linha, :indice_linha], vetor_Y[:indice_linha])
+    return vetor_Y
+
+
+def substituicao_retroativa(matriz_U: np.ndarray, vetor_Y: np.ndarray) -> np.ndarray:
+    """
+    Resolve o sistema linear Ux = Y (substituição reversa).
+    """
+    dimensao = matriz_U.shape[0]
+    vetor_solucao = np.zeros(dimensao)
+    for indice_linha in reversed(range(dimensao)):
+        if np.isclose(matriz_U[indice_linha, indice_linha], 0.0):
+            raise np.linalg.LinAlgError("Sistema sem solução única (pivô nulo em U).")
+        vetor_solucao[indice_linha] = (vetor_Y[indice_linha] - np.dot(matriz_U[indice_linha, indice_linha + 1 :], vetor_solucao[indice_linha + 1 :])) / matriz_U[indice_linha, indice_linha]
+    return vetor_solucao
+
+
+def resolver_sistema_lu(matriz_coeficientes: np.ndarray, vetor_termos: np.ndarray) -> np.ndarray:
+    """
+    Resolve um sistema linear Ax = B usando a decomposição LU.
+    """
+    permutacao, inferior, superior = decomposicao_lu_pivot(matriz_coeficientes)
+    vetor_b_permutado = permutacao @ vetor_termos
+    vetor_intermediario = substituicao_sucessiva(inferior, vetor_b_permutado)
+    vetor_resultado = substituicao_retroativa(superior, vetor_intermediario)
+    return vetor_resultado
+
+
+def metodo_jacobi(
+    matriz_coeffs: np.ndarray, 
+    vetor_constantes: np.ndarray, 
+    num_iteracoes: int, 
+    tolerancia: float
+) -> np.ndarray:
+    """
+    Resolve um sistema linear pelo método iterativo de Jacobi.
+    """
+    matriz_A_float = matriz_coeffs.astype(float)
+    vetor_B_float = vetor_constantes.astype(float)
+    tamanho = vetor_B_float.shape[0]
+    solucao_atual = np.zeros(tamanho)
+    
+    matriz_diagonal = np.diag(matriz_A_float)
+    if np.any(matriz_diagonal == 0):
+        raise ValueError("Diagonal principal possui zeros, o método pode não convergir.")
+
+    matriz_resto = matriz_A_float - np.diagflat(matriz_diagonal)
+
+    for _ in range(num_iteracoes):
+        solucao_proxima = (vetor_B_float - matriz_resto @ solucao_atual) / matriz_diagonal
+        # Critério de parada baseado na norma euclidiana da diferença.
+        if np.linalg.norm(solucao_proxima - solucao_atual, ord=2) < tolerancia:
+            return solucao_proxima
+        solucao_atual = solucao_proxima.copy()
+        
+    return solucao_atual
+
+
+def metodo_gauss_seidel(
+    matriz_A: np.ndarray, 
+    vetor_B: np.ndarray, 
+    max_loops: int, 
+    limite_erro: float
+) -> np.ndarray:
+    """
+    Resolve um sistema linear pelo método iterativo de Gauss-Seidel.
+    """
+    matriz_A_float = matriz_A.astype(float)
+    vetor_B_float = vetor_B.astype(float)
+    ordem_matriz = vetor_B_float.shape[0]
+    vetor_x = np.zeros(ordem_matriz)
+
+    for _ in range(max_loops):
+        vetor_x_anterior = vetor_x.copy()
+        for i in range(ordem_matriz):
+            soma1 = np.dot(matriz_A_float[i, :i], vetor_x[:i])
+            soma2 = np.dot(matriz_A_float[i, i + 1 :], vetor_x_anterior[i + 1 :])
+            vetor_x[i] = (vetor_B_float[i] - soma1 - soma2) / matriz_A_float[i, i]
+        
+        # Verifica a convergência.
+        if np.linalg.norm(vetor_x - vetor_x_anterior, ord=2) < limite_erro:
+            return vetor_x
+            
+    return vetor_x
+
+
+def calcular_jacobiana_numerica(ponto_avaliacao, funcao_vetorial, passo_diferenciacao=1e-8):
+    """
+    Calcula a matriz Jacobiana de uma função vetorial numericamente.
+    """
+    vetor_ponto = np.asarray(ponto_avaliacao, dtype=float)
+    dimensao_vetor = vetor_ponto.size
+    matriz_jacobiana = np.zeros((dimensao_vetor, dimensao_vetor), dtype=float)
+
+    # Define uma função auxiliar para cada componente de F.
+    def funcao_componente(vetor_entrada):
+        return funcao_vetorial(vetor_entrada)[indice_componente]
+
+    # Calcula a derivada para cada linha da Jacobiana.
+    for indice_componente in range(dimensao_vetor):
+        matriz_jacobiana[indice_componente, :] = approx_fprime(vetor_ponto, funcao_componente, epsilon=passo_diferenciacao)
+
+    return matriz_jacobiana
+
+
+def iteracao_newton(vetor_x, func_vetorial, func_jacobiana):
+    """
+    Define a função de iteração para o método de Newton.
+    """
+    return vetor_x - np.linalg.inv(func_jacobiana(vetor_x)) @ func_vetorial(vetor_x)
+
+
+def iteracao_newton_numerica(vetor_x, func_vetorial):
+    """
+    Define a função de iteração para o método de Newton com Jacobiana numérica.
+    """
+    jacobiana_num = calcular_jacobiana_numerica(vetor_x, func_vetorial)
+    return vetor_x - np.linalg.inv(jacobiana_num) @ func_vetorial(vetor_x)
+
+
+def metodo_ponto_fixo(
+    chute_inicial, 
+    funcao_iteracao, 
+    precisao_desejada=1e-8, 
+    limite_iterativo=1000
+):
+    """
+    Implementa o método do ponto fixo para sistemas de equações.
+    """
+    proxima_aproximacao = funcao_iteracao(chute_inicial)
+    passo = 1
+    
+    # Itera até a convergência ou atingir o limite.
+    while np.linalg.norm(proxima_aproximacao - chute_inicial) > precisao_desejada and passo < limite_iterativo:
+        chute_inicial = proxima_aproximacao
+        proxima_aproximacao = funcao_iteracao(chute_inicial)
+        passo += 1
+        
+    return proxima_aproximacao
